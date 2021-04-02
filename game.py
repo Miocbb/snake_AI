@@ -1,15 +1,10 @@
 import os
-
-from typing_extensions import final
 os.environ['PYGAME_HIDE_SUPPORT_PROMPT'] = "hide"
 import pygame
 import sys
 import time
-import random
 import snake
-import dnn
-import copy
-import numpy as np
+import board
 
 # some constant values
 black = 0, 0, 0
@@ -94,112 +89,30 @@ def read_key_restart_game():
                     break
     return restart
 
-def move_snake_by_key(snake):
-    """
-    Move the snake for one step forward based on the keyboard input.
-
-    Parameters
-    ----------
-    snake : snake.Snake
-        A snake object on the game board.
-
-    Returns
-    -------
-    bool
-        True for successful move, and False otherwise.
-    """
-    running = True
-    status = True # successfully moved or not.
-    while running:
-        for event in pygame.event.get():
-            if event.type == pygame.QUIT:
-                sys.exit()
-            elif event.type == pygame.KEYDOWN:
-                if event.key == pygame.K_UP:
-                    status = snake.move_up()
-                elif event.key == pygame.K_DOWN:
-                    status = snake.move_down()
-                elif event.key == pygame.K_LEFT:
-                    status = snake.move_left()
-                elif event.key == pygame.K_RIGHT:
-                    status = snake.move_right()
-                running = False
-    return status
-
-def move_snake_random(snake):
-    """
-    Move the snake for one step forward randomly.
-
-    Parameters
-    ----------
-    snake : snake.Snake
-        A snake object on the game board.
-
-    Returns
-    -------
-    bool
-        True for successful move, and False otherwise.
-    """
-    idx = random.randrange(4)
-    return snake.move(idx)
-
-def move_snake_by_dnn(snake, brain=None):
-    """
-    Move the snake for one step forward based on a DNN model.
-
-    Parameters
-    ----------
-    snake : snake.Snake
-        A snake object on the game board.
-    brain : dnn.NN, default=None
-        A deep neural network that works as the brain of the snake to descide
-        the direction. By default, the layout of the DNN is [x, 250, 100, 4],
-        in which `x` is the dimension of input feature from the snake.
-
-    Returns
-    -------
-    bool
-        True for successful move, and False otherwise.
-    """
-    x = snake.vision()
-    x = x.reshape(-1, 1)
-    n_input = x.shape[0]
-    n_output = 4
-    if not brain:
-        brain = dnn.NN([n_input, 250, 100, n_output])
-    else:
-        if brain.num_input_nodes() != n_input:
-            raise Exception('Wrong input dimension of snake NN brain.')
-        elif brain.num_output_nodes() != n_output:
-            raise Exception('Wrong output dimension of snake NN brain.')
-
-    prediction = brain.evaluate(x)
-    choice = np.argmax(prediction)
-    print(f'step: {snake.step} dnn prediction: {prediction.flatten()} choice: {choice}')
-    return snake.move(choice)
-
-
-def replay_game(memory, time_lag=0.1, screen_size=(500, 500), repeat=True):
+def replay_game(snake, repeat=True):
     """
     Replay the game.
 
     Parameters
     ----------
-    memory : See snake.Snake.memory
+    snake : snake.Snake
     """
-    original_board = memory['init_board']
-    steps = memory['steps']
+    if not snake.memory:
+        raise Exception('Fail to replay the game of snake. Input snake has not memory.')
+
+    original_board = snake.memory['init_board']
+    steps = snake.memory['steps']
 
     pygame.init()
     # create a pygame window
-    screen = pygame.display.set_mode(screen_size)
+    screen = pygame.display.set_mode(gui_param['screen_size'])
     # set the pygame window name
     pygame.display.set_caption('Snake AI Replay')
 
     running = True
     while running:
         # initialize and draw board
-        board = copy.deepcopy(original_board)
+        board = original_board.copy()
         screen.fill(color_bg)
         draw_board(screen, board)
 
@@ -221,58 +134,48 @@ def replay_game(memory, time_lag=0.1, screen_size=(500, 500), repeat=True):
             draw_board(screen, board)
 
             # add time lag between each step.
-            time.sleep(time_lag)
+            time.sleep(gui_param['time_lag'])
 
         # draw game over message and pause for 1 second.
         draw_game_over(screen, 'Game Over!')
         time.sleep(1)
 
+        # repeat the replay?
+        if not repeat:
+            running = False
 
-def run_game(nx=10, ny=10, screen_size=(500, 500), plot=True,
-             enable_restart=False,
-             walk_type='random',
-             time_lag=0.1,
-             verbose=0
-             ):
+gui_param = {
+    # The dimension in pixel (weight, height) of the game display window.
+    'screen_size': (500, 500),
+    'time_lag': 0.1
+}
+
+def run_game(board, snake, plot=True, enable_restart=False):
     """
     Run the snake game.
 
     Parameters
     ----------
-    nx : int
-        The number of units in X-axis (width) of the game board.
-    ny : int
-        The number of units in Y-axis (height) of the game board.
-    screen_size : (int, int)
-        The dimension in pixel (weight, height) of the game display window.
+    board : board.Board
+        The game board.
+    snake : snake.Snake
+        A snake in the game.
     plot : bool, default=True
         Display the game window or not.
     enable_restart : bool, default=False
         Enable restarting the game or not.
-    walk_type : str, options={'random', 'key', 'ai'}
-        The type of the snake step forward.
-        'random' : forward randomly
-        'key' : forward based on keyboard input
-        'ai' : forward with AI.
-    time_lag : float
-        The length of time lag to update the snake in second.
     verbose : int, default=0
         The the print level.
-
 
     Returns
     -------
     snake.Snake
         A snake that reaches to the end of the game.
     """
-    # create the game board
-    board = snake.Board((nx, ny))
-    game_snake = snake.Snake(board, verbose=verbose)
-
     if plot:
         pygame.init()
         # create a pygame window
-        screen = pygame.display.set_mode(screen_size)
+        screen = pygame.display.set_mode(gui_param['screen_size'])
         # set the pygame window name
         pygame.display.set_caption('Snake AI')
         # draw the screen
@@ -281,20 +184,12 @@ def run_game(nx=10, ny=10, screen_size=(500, 500), plot=True,
     running = True
     while running:
         # control the refresh speed.
-        if time_lag > 0:
-            time.sleep(abs(time_lag))
-
+        if plot and gui_param['time_lag'] > 0:
+            time.sleep(abs(gui_param['time_lag']))
         if plot:
             screen.fill(color_bg)
             draw_board(screen, board)
-        if walk_type == 'random':
-            status = move_snake_random(game_snake)
-        elif walk_type == 'key':
-            status = move_snake_by_key(game_snake)
-        elif walk_type == 'dnn':
-            status = move_snake_by_dnn(game_snake)
-        else:
-            raise Exception(f'Detect unsupported walk type of snake.')
+        status = snake.move()
 
         # the snake is dead. enable restart or not?
         if not status:
@@ -306,20 +201,34 @@ def run_game(nx=10, ny=10, screen_size=(500, 500), plot=True,
                 draw_game_over(screen, msg)
                 if enable_restart:
                     if read_key_restart_game():
-                        game_snake.reset()
+                        snake.reset()
                     else:
                         running = False
                 else:
                     running = False;
             else:
                 running = False;
-    return game_snake
+    return snake
+
+
+def create_game(mode='key', game_size=(10, 10), verbose=1):
+    game_board = board.Board(game_size)
+    if mode == 'key':
+        game_snake = snake.SnakeKeyboard(game_board, verbose=verbose)
+    elif mode == 'dnn':
+        game_snake = snake.SnakeDNN(game_board, verbose=verbose)
+    elif mode == 'random':
+        game_snake = snake.SnakeRandom(game_board, verbose=verbose)
+
+    return game_board, game_snake
 
 
 if __name__ == '__main__':
-    rst_snake = run_game(enable_restart=True, walk_type='dnn', plot=True,
-                         time_lag=0.1, verbose=1)
-    replay_game(rst_snake.memory, time_lag=1)
+    game_board, game_snake = create_game(mode='random')
+    rst_snake = run_game(game_board, game_snake, enable_restart=True, plot=True)
+
+    gui_param['time_lag'] = 0.5
+    replay_game(rst_snake)
     #print(f'Snake score: {rst_snake.score}')
     #print(f'Snake length: {rst_snake.len}')
     #print(f'Snake moveing steps: {rst_snake.step}')

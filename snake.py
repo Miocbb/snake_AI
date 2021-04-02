@@ -1,10 +1,9 @@
-import numpy as np
-import random
 from collections import deque
-
-l_empty = 0
-l_snake = 1
-l_food = 2
+from board import Board, l_snake, l_empty, l_food
+import sys
+import pygame
+import numpy as np
+import dnn
 
 
 class Snake:
@@ -23,32 +22,25 @@ class Snake:
     step : int
         The number of steps that the snake achieved. This quantity reflects
         the lifetime of the snake.
-    memory : dict
-        The memory of how the snake plays on the board.
-        'init_board' : Board
-            The initial board of the game for this snake.
-        'steps' : deque of list, deque([((x, y), val), ...])
-            The modification to the board in each step.
     """
 
-    def __init__(self, board, is_random=True, save_memory=True, verbose=0):
+    def __init__(self, board, is_random=True, verbose=0, save_memory=True):
+        self._is_random = is_random
+        self._verbose = verbose
+        self._save_memory = save_memory
         self._board = board
-        self.is_random = is_random
-        self.save_memory = save_memory
-        self.verbose = verbose
         self._init()
 
     def _init(self):
         # create snake body
-        if self.is_random:
-            body_x, body_y = self._board.next_random_xy()
+        if self._is_random:
+            body_x, body_y = self._board.next_random_avail_position()
         else:
             body_x, body_y = 0, 0
         self.body = deque([(body_x, body_y)])
         self.len = 1
         self.score = 0
         self.step = 0
-        self.memory = {}
 
         # update board label
         self._board.set_label(body_x, body_y, l_snake)
@@ -58,29 +50,25 @@ class Snake:
         # collision.
         self.new_food()
 
-        if self.save_memory:
-            t = Board(self._board.shape)
-            t._data = self._board._data.copy()
-            self.memory['init_board'] = t
+        self.memory = {}
+        if self._save_memory:
+            self.memory['init_board'] = self._board.copy()
             self.memory['steps'] = []
 
-        self._vision_direction = {
-            (0, 1) : 'right',
-            (0, -1) : 'left',
-            (1, 0) : 'down',
-            (-1, 0) : 'up',
-            (1, 1) : 'down_right',
-            (1, -1) : 'down_left',
-            (-1, -1) : 'up_left',
-            (-1, 1) : 'up_right',
-        }
-        self._vision_orderd_directions = sorted(list(self._vision_direction.keys()))
+        self._move_ops = (self.move_left, self.move_right,
+                          self.move_down, self.move_up)
 
     def reset(self):
+        """
+        Reset the game board and the snake.
+
+        The board is reset with `Board.reset` and snake is reset with
+        re-initialization.
+        """
         self._board.reset()
         self._init()
 
-    def _foward(self, new_head):
+    def _forward(self, new_head):
         # check if it is okay to move one step forward.
         x, y = new_head
         bd_x, bd_y = self._board.shape
@@ -120,44 +108,149 @@ class Snake:
         self.step += 1
 
         # update memory with all the operations to board in current step.
-        if self.save_memory:
+        if self._save_memory:
             self.memory['steps'].append(record)
 
-        if self.verbose > 0:
-            print(f'step: {self.step}\n{self._board._data}')
-            self.vision()
-
+        if self._verbose > 0:
+            print(f'step: {self.step}')
+            self._board.print()
         return True
 
     def move_up(self):
         head = self.body[0]
         new_head = (head[0]-1, head[1])
-        return self._foward(new_head)
+        return self._forward(new_head)
 
     def move_down(self):
         head = self.body[0]
         new_head = (head[0]+1, head[1])
-        return self._foward(new_head)
+        return self._forward(new_head)
 
     def move_left(self):
         head = self.body[0]
         new_head = (head[0], head[1]-1)
-        return self._foward(new_head)
+        return self._forward(new_head)
 
     def move_right(self):
         head = self.body[0]
         new_head = (head[0], head[1]+1)
-        return self._foward(new_head)
+        return self._forward(new_head)
 
-    def move(self, idx):
-        op = [self.move_left, self.move_right, self.move_down, self.move_up]
-        return op[idx]()
+    def move(self):
+        raise Exception("Don't know how to move: not implemented!")
 
     def new_food(self):
-        x, y = self._board.next_random_xy()
+        x, y = self._board.next_random_avail_position()
         self._board.set_label(x, y, l_food)
         self._board.food_xy = (x, y)
         return x, y
+
+
+class SnakeKeyboard(Snake):
+    """
+    A type of snake that supports reading moving instructions from the input
+    of keyboard.
+    """
+
+    def __init__(self, *args, **kargs):
+        super(SnakeKeyboard, self).__init__(*args, **kargs)
+
+    def move(self):
+        """
+        Move the snake for one step forward based on the keyboard input.
+
+        Returns
+        -------
+        bool
+            True for successful move, and False otherwise.
+        """
+        running = True
+        status = True  # successfully moved or not.
+        while running:
+            for event in pygame.event.get():
+                if event.type == pygame.QUIT:
+                    sys.exit()
+                elif event.type == pygame.KEYDOWN:
+                    if event.key == pygame.K_UP:
+                        status = self.move_up()
+                    elif event.key == pygame.K_DOWN:
+                        status = self.move_down()
+                    elif event.key == pygame.K_LEFT:
+                        status = self.move_left()
+                    elif event.key == pygame.K_RIGHT:
+                        status = self.move_right()
+                    running = False
+        return status
+
+
+class SnakeRandom(Snake):
+    """
+    A type of snake that supports moving randomly.
+    """
+
+    def __init__(self, *args, **kargs):
+        super(SnakeRandom, self).__init__(*args, **kargs)
+
+    def move(self):
+        """
+        Randomly move the snake for one step forward.
+
+        Returns
+        -------
+        bool
+            True for successful move, and False otherwise.
+        """
+        return self._move_ops[np.random.randint(4)]()
+
+
+class SnakeDNN(Snake):
+    """
+    A type of snake with artificial intelligence based on deep neural network.
+
+    Attributes
+    ----------
+    memory : dict
+        The memory of how the snake plays on the board.
+        'init_board' : board.Board
+            The initial board of the game for this snake.
+        'steps' : deque of list, deque([((x, y), val), ...])
+            The modification to the board in each step.
+    brain : dnn.NN
+        The internal deep neural network of the snake.
+    """
+
+    def __init__(self, *args, dnn_hidden_layers=[250, 100], **kargs):
+        """
+        Parameters
+        ----------
+        dnn_hidden_layers: list
+            The number of nodes in all the hidden layers, following the
+            direction from input layer to output layer.
+        """
+        super(SnakeDNN, self).__init__(*args, **kargs)
+
+        self._vision_direction = {
+            (0, 1): 'right',
+            (0, -1): 'left',
+            (1, 0): 'down',
+            (-1, 0): 'up',
+            (1, 1): 'down_right',
+            (1, -1): 'down_left',
+            (-1, -1): 'up_left',
+            (-1, 1): 'up_right',
+        }
+        self._vision_orderd_directions = sorted(
+            list(self._vision_direction.keys()))
+
+        num_input_nodes = self.vision().size
+        self._dnn_full_layers = [num_input_nodes] + dnn_hidden_layers + [4]
+        self.brain = dnn.NN(self._dnn_full_layers)
+
+    def _forward(self, new_head):
+        status = super(SnakeDNN, self)._forward(new_head)
+        if self._verbose > 0:
+            self.vision()
+        return status
 
     def vision(self):
         """
@@ -193,6 +286,7 @@ class Snake:
             A 1 x 3 array that represents the distance to the wall, body and
             food respectively.
         """
+
         def measure_dist(self, direction, condition):
             sx, sy = self._board.shape
             x, y = self.body[0]
@@ -234,43 +328,25 @@ class Snake:
         d_food = measure_dist(self, direction, cond_reach_food)
         rst = np.array([d_wall, d_body, d_food])
         desc = self._vision_direction[direction]
-        if self.verbose > 0:
-            print(f'{desc : <12} ({direction[0]:>2},{direction[1]:>2}): d_wall={rst[0] : > 2} d_body={rst[1] : > 2} d_food={rst[2] : > 2}')
+        if self._verbose > 0:
+            print(
+                f'{desc : <12} ({direction[0]:>2},{direction[1]:>2}): d_wall={rst[0] : > 2} d_body={rst[1] : > 2} d_food={rst[2] : > 2}')
         return rst
 
-class Board:
-    """
-    The game board class in the game snake.
+    def move(self):
+        """
+        Move the snake one step forward based on DNN.
 
-    The game board is represented as a 2-d numpy.array (matrix).
-    0 refers to empty position, 1 refers to snake, and 2 refers to snake food.
-    """
-
-    def __init__(self, shape):
-        self._data = np.zeros(shape)
-        self.food_xy = (-1, -1)
-        self.shape = shape
-
-    def set_label(self, x, y, label):
-        self._data[x, y] = label
-
-    def get_label(self, x, y):
-        return self._data[x, y]
-
-    def is_occupied(self, x, y):
-        return self._data[x, y] != 0
-
-    def reset(self):
-        self._data = np.zeros(self.shape)
-
-    def print(self):
-        print(self._data)
-
-    def next_random_xy(self):
-        bx, by = self.shape
-        x = random.randrange(bx)
-        y = random.randrange(by)
-        while (self.is_occupied(x, y)):
-            x = random.randrange(bx)
-            y = random.randrange(by)
-        return x, y
+        Returns
+        -------
+        bool
+            True for successful move, and False otherwise.
+        """
+        x = self.vision()
+        x = x.reshape(-1, 1)
+        prediction = self.brain.evaluate(x)
+        choice = np.argmax(prediction)
+        if self._verbose > 0:
+            print(
+                f'step: {self.step} dnn prediction: {prediction.flatten()} choice: {choice}')
+        return self._move_ops[choice]()
