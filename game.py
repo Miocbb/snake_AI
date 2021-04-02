@@ -1,10 +1,13 @@
 import os
+
+from typing_extensions import final
 os.environ['PYGAME_HIDE_SUPPORT_PROMPT'] = "hide"
 import pygame
 import sys
 import time
 import random
 import snake
+import copy
 
 # some constant values
 black = 0, 0, 0
@@ -62,7 +65,7 @@ def draw_game_over(screen, msg):
     screen.blit(game_over_msg, game_over_msg_Rect)
     pygame.display.flip()
 
-def restart_game_by_key():
+def read_key_restart_game():
     """
     Read keyboard input to determine to restart the game or not.
 
@@ -81,11 +84,12 @@ def restart_game_by_key():
             if event.type == pygame.KEYDOWN:
                 if event.key == pygame.K_y:
                     restart = True
+                    running = False
+                    break
                 elif event.key == pygame.K_n:
                     restart = False
-                pygame.event.clear()
-                running = False
-                break
+                    running = False
+                    break
     return restart
 
 def move_snake_by_key(snake):
@@ -128,6 +132,54 @@ def move_snake_random(snake):
     idx = random.randrange(4)
     return op[idx]()
 
+def replay_game(memory, time_lag=0.1, screen_size=(500, 500), repeat=True):
+    """
+    Replay the game.
+
+    Parameters
+    ----------
+    memory : See snake.Snake.memory
+    """
+    original_board = memory['init_board']
+    steps = memory['steps']
+
+    pygame.init()
+    # create a pygame window
+    screen = pygame.display.set_mode(screen_size)
+    # set the pygame window name
+    pygame.display.set_caption('Snake AI Replay')
+
+    running = True
+    while running:
+        # initialize and draw board
+        board = copy.deepcopy(original_board)
+        screen.fill(color_bg)
+        draw_board(screen, board)
+
+        # replay the game step by step
+        for record in steps:
+            # handle exit from keyboard.
+            for event in pygame.event.get():
+                if event.type == pygame.QUIT:
+                    running = False
+            if not running:
+                break
+
+            # update board
+            for (x, y), v in record:
+                board.set_label(x, y, v)
+
+            # draw the screen
+            screen.fill(color_bg)
+            draw_board(screen, board)
+
+            # add time lag between each step.
+            time.sleep(time_lag)
+
+        # draw game over message and pause for 1 second.
+        draw_game_over(screen, 'Game Over!')
+        time.sleep(1)
+
 
 def run_game(nx=10, ny=10, screen_size=(500, 500), plot=True,
              enable_restart=False,
@@ -165,6 +217,7 @@ def run_game(nx=10, ny=10, screen_size=(500, 500), plot=True,
     """
     # create the game board
     board = snake.Board((nx, ny))
+    game_snake = snake.Snake(board)
 
     if plot:
         pygame.init()
@@ -185,9 +238,9 @@ def run_game(nx=10, ny=10, screen_size=(500, 500), plot=True,
             screen.fill(color_bg)
             draw_board(screen, board)
         if walk_type == 'random':
-            status = move_snake_random(board.snake)
+            status = move_snake_random(game_snake)
         elif walk_type == 'key':
-            status = move_snake_by_key(board.snake)
+            status = move_snake_by_key(game_snake)
         elif walk_type == 'ai':
             raise Exception(f'Snake AI is not done yet.')
         else:
@@ -202,16 +255,24 @@ def run_game(nx=10, ny=10, screen_size=(500, 500), plot=True,
 
                 draw_game_over(screen, msg)
                 if enable_restart:
-                    running = restart_game_by_key()
+                    if read_key_restart_game():
+                        game_snake.reset()
+                    else:
+                        running = False
                 else:
-                    break;
+                    running = False;
             else:
-                break; # break the main game loop to exit.
-    return board.snake
+                running = False;
+    return game_snake
 
 
 if __name__ == '__main__':
-    snake = run_game(enable_restart=True, walk_type='random', plot=False)
-    print(f'Snake score: {snake.score}')
-    print(f'Snake length: {snake.len}')
-    print(f'Snake moveing steps: {snake.step}')
+    rst_snake = run_game(enable_restart=True, walk_type='random', plot=False,
+                         time_lag=0)
+    replay_game(rst_snake.memory, time_lag=1)
+    #print(f'Snake score: {rst_snake.score}')
+    #print(f'Snake length: {rst_snake.len}')
+    #print(f'Snake moveing steps: {rst_snake.step}')
+    #print(f'Snake init board:\n{rst_snake.memory["init_board"]}')
+    #print(f'Snake final board:\n{rst_snake._board._data}')
+    #print(f'Snake steps memory: {rst_snake.memory["steps"]}')
