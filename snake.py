@@ -149,6 +149,10 @@ class Snake:
         new_head = (head[0], head[1]+1)
         return self._foward(new_head)
 
+    def move(self, idx):
+        op = [self.move_left, self.move_right, self.move_down, self.move_up]
+        return op[idx]()
+
     def new_food(self):
         x, y = self._board.next_random_xy()
         self._board.set_label(x, y, l_food)

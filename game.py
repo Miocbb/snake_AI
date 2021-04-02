@@ -7,7 +7,9 @@ import sys
 import time
 import random
 import snake
+import dnn
 import copy
+import numpy as np
 
 # some constant values
 black = 0, 0, 0
@@ -100,6 +102,11 @@ def move_snake_by_key(snake):
     ----------
     snake : snake.Snake
         A snake object on the game board.
+
+    Returns
+    -------
+    bool
+        True for successful move, and False otherwise.
     """
     running = True
     status = True # successfully moved or not.
@@ -127,10 +134,50 @@ def move_snake_random(snake):
     ----------
     snake : snake.Snake
         A snake object on the game board.
+
+    Returns
+    -------
+    bool
+        True for successful move, and False otherwise.
     """
-    op = [snake.move_left, snake.move_right, snake.move_down, snake.move_up]
     idx = random.randrange(4)
-    return op[idx]()
+    return snake.move(idx)
+
+def move_snake_by_dnn(snake, brain=None):
+    """
+    Move the snake for one step forward based on a DNN model.
+
+    Parameters
+    ----------
+    snake : snake.Snake
+        A snake object on the game board.
+    brain : dnn.NN, default=None
+        A deep neural network that works as the brain of the snake to descide
+        the direction. By default, the layout of the DNN is [x, 250, 100, 4],
+        in which `x` is the dimension of input feature from the snake.
+
+    Returns
+    -------
+    bool
+        True for successful move, and False otherwise.
+    """
+    x = snake.vision()
+    x = x.reshape(-1, 1)
+    n_input = x.shape[0]
+    n_output = 4
+    if not brain:
+        brain = dnn.NN([n_input, 250, 100, n_output])
+    else:
+        if brain.num_input_nodes() != n_input:
+            raise Exception('Wrong input dimension of snake NN brain.')
+        elif brain.num_output_nodes() != n_output:
+            raise Exception('Wrong output dimension of snake NN brain.')
+
+    prediction = brain.evaluate(x)
+    choice = np.argmax(prediction)
+    print(f'step: {snake.step} dnn prediction: {prediction.flatten()} choice: {choice}')
+    return snake.move(choice)
+
 
 def replay_game(memory, time_lag=0.1, screen_size=(500, 500), repeat=True):
     """
@@ -244,8 +291,8 @@ def run_game(nx=10, ny=10, screen_size=(500, 500), plot=True,
             status = move_snake_random(game_snake)
         elif walk_type == 'key':
             status = move_snake_by_key(game_snake)
-        elif walk_type == 'ai':
-            raise Exception(f'Snake AI is not done yet.')
+        elif walk_type == 'dnn':
+            status = move_snake_by_dnn(game_snake)
         else:
             raise Exception(f'Detect unsupported walk type of snake.')
 
@@ -270,9 +317,9 @@ def run_game(nx=10, ny=10, screen_size=(500, 500), plot=True,
 
 
 if __name__ == '__main__':
-    rst_snake = run_game(enable_restart=True, walk_type='key', plot=True,
+    rst_snake = run_game(enable_restart=True, walk_type='dnn', plot=True,
                          time_lag=0.1, verbose=1)
-    #replay_game(rst_snake.memory, time_lag=1)
+    replay_game(rst_snake.memory, time_lag=1)
     #print(f'Snake score: {rst_snake.score}')
     #print(f'Snake length: {rst_snake.len}')
     #print(f'Snake moveing steps: {rst_snake.step}')
