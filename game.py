@@ -185,6 +185,7 @@ def run_game(nx=10, ny=10, screen_size=(500, 500), plot=True,
              enable_restart=False,
              walk_type='random',
              time_lag=0.1,
+             verbose=0
              ):
     """
     Run the snake game.
@@ -208,6 +209,8 @@ def run_game(nx=10, ny=10, screen_size=(500, 500), plot=True,
         'ai' : forward with AI.
     time_lag : float
         The length of time lag to update the snake in second.
+    verbose : int, default=0
+        The the print level.
 
 
     Returns
@@ -217,7 +220,7 @@ def run_game(nx=10, ny=10, screen_size=(500, 500), plot=True,
     """
     # create the game board
     board = snake.Board((nx, ny))
-    game_snake = snake.Snake(board)
+    game_snake = snake.Snake(board, verbose=verbose)
 
     if plot:
         pygame.init()
@@ -267,9 +270,9 @@ def run_game(nx=10, ny=10, screen_size=(500, 500), plot=True,
 
 
 if __name__ == '__main__':
-    rst_snake = run_game(enable_restart=True, walk_type='random', plot=False,
-                         time_lag=0)
-    replay_game(rst_snake.memory, time_lag=1)
+    rst_snake = run_game(enable_restart=True, walk_type='key', plot=True,
+                         time_lag=0.1, verbose=1)
+    #replay_game(rst_snake.memory, time_lag=1)
     #print(f'Snake score: {rst_snake.score}')
     #print(f'Snake length: {rst_snake.len}')
     #print(f'Snake moveing steps: {rst_snake.step}')

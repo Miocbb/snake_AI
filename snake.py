@@ -31,10 +31,11 @@ class Snake:
             The modification to the board in each step.
     """
 
-    def __init__(self, board, is_random=True, save_memory=True):
+    def __init__(self, board, is_random=True, save_memory=True, verbose=0):
         self._board = board
         self.is_random = is_random
         self.save_memory = save_memory
+        self.verbose = verbose
         self._init()
 
     def _init(self):
@@ -62,6 +63,18 @@ class Snake:
             t._data = self._board._data.copy()
             self.memory['init_board'] = t
             self.memory['steps'] = []
+
+        self._vision_direction = {
+            (0, 1) : 'right',
+            (0, -1) : 'left',
+            (1, 0) : 'down',
+            (-1, 0) : 'up',
+            (1, 1) : 'down_right',
+            (1, -1) : 'down_left',
+            (-1, -1) : 'up_left',
+            (-1, 1) : 'up_right',
+        }
+        self._vision_orderd_directions = sorted(list(self._vision_direction.keys()))
 
     def reset(self):
         self._board.reset()
@@ -110,7 +123,10 @@ class Snake:
         if self.save_memory:
             self.memory['steps'].append(record)
 
-        #print(f'step: {self.step}\n{self._board._data}')
+        if self.verbose > 0:
+            print(f'step: {self.step}\n{self._board._data}')
+            self.vision()
+
         return True
 
     def move_up(self):
@@ -136,8 +152,87 @@ class Snake:
     def new_food(self):
         x, y = self._board.next_random_xy()
         self._board.set_label(x, y, l_food)
+        self._board.food_xy = (x, y)
         return x, y
 
+    def vision(self):
+        """
+        The vision of the snake.
+
+        The snake looks 8 directions, including (up, down, left, right,
+        up_left, up_right, down_left, down_right). In each direction, the snake
+        will measure 3 distances, including (head -> wall), (head -> body),
+        and (head -> food).
+
+        Returns
+        -------
+        numpy.array
+            A 8 x 3 matrix that represents all the distances.
+        """
+        rst = np.zeros((8, 3))
+        for i, direction in enumerate(self._vision_orderd_directions):
+            rst[i, :] = self.vision_in_one_direction(direction)
+        return rst
+
+    def vision_in_one_direction(self, direction):
+        """
+        Parameters
+        ----------
+        direction : (int, int)
+            The unit direction vector. For example direction=(0, 1) means
+            the right direction, (1, 1) means the up_right direction and
+            (-1, 0) means the left direction.
+
+        Returns
+        -------
+        numpy.array
+            A 1 x 3 array that represents the distance to the wall, body and
+            food respectively.
+        """
+        def measure_dist(self, direction, condition):
+            sx, sy = self._board.shape
+            x, y = self.body[0]
+            dx, dy = direction
+            step = 0
+            found = False
+            while (x >= 0 and x < sx) and (y >= 0 and y < sy):
+                if condition(self, (x, y)):
+                    found = True
+                    break
+                else:
+                    x += dx
+                    y += dy
+                    step += 1
+
+            if found:
+                rst = step
+            else:
+                rst = -1
+            return rst
+
+        def cond_reach_wall(self, xy):
+            x, y = xy
+            sx, sy = self._board.shape
+            return x in [0, sx - 1] or y in [0, sy - 1]
+
+        def cond_reach_food(self, xy):
+            return xy == self._board.food_xy
+
+        def cond_reach_body(self, xy):
+            x, y = xy
+            return (self._board._data[x, y] == l_snake) and (xy != self.body[0])
+
+        if direction not in self._vision_direction:
+            raise Exception('Detect wrong direction in vision.')
+
+        d_wall = measure_dist(self, direction, cond_reach_wall)
+        d_body = measure_dist(self, direction, cond_reach_body)
+        d_food = measure_dist(self, direction, cond_reach_food)
+        rst = np.array([d_wall, d_body, d_food])
+        desc = self._vision_direction[direction]
+        if self.verbose > 0:
+            print(f'{desc : <12} ({direction[0]:>2},{direction[1]:>2}): d_wall={rst[0] : > 2} d_body={rst[1] : > 2} d_food={rst[2] : > 2}')
+        return rst
 
 class Board:
     """
@@ -149,6 +244,7 @@ class Board:
 
     def __init__(self, shape):
         self._data = np.zeros(shape)
+        self.food_xy = (-1, -1)
         self.shape = shape
 
     def set_label(self, x, y, label):
