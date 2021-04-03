@@ -150,14 +150,12 @@ gui_param = {
     'time_lag': 0.1
 }
 
-def run_game(board, snake, plot=True, enable_restart=False):
+def run_game(snake, plot=True, enable_restart=False):
     """
     Run the snake game.
 
     Parameters
     ----------
-    board : board.Board
-        The game board.
     snake : snake.Snake
         A snake in the game.
     plot : bool, default=True
@@ -179,7 +177,7 @@ def run_game(board, snake, plot=True, enable_restart=False):
         # set the pygame window name
         pygame.display.set_caption('Snake AI')
         # draw the screen
-        draw_board(screen, board)
+        snake.draw(screen)
 
     running = True
     while running:
@@ -188,7 +186,7 @@ def run_game(board, snake, plot=True, enable_restart=False):
             time.sleep(abs(gui_param['time_lag']))
         if plot:
             screen.fill(color_bg)
-            draw_board(screen, board)
+            snake.draw(screen)
         status = snake.move()
 
         # the snake is dead. enable restart or not?
@@ -225,7 +223,7 @@ def create_game(mode='key', game_size=(10, 10), verbose=1):
 
 if __name__ == '__main__':
     game_board, game_snake = create_game(mode='random')
-    rst_snake = run_game(game_board, game_snake, enable_restart=True, plot=True)
+    rst_snake = run_game(game_snake, enable_restart=True, plot=True)
 
     gui_param['time_lag'] = 0.5
     replay_game(rst_snake)

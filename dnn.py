@@ -50,7 +50,7 @@ class NN:
 
         # evaluate the last layer to the output layer.
         a = self._linear(a, self.W[-1], self.b[-1])
-        a = self._softmax(a)
+        #a = self._softmax(a)
 
         return a
 

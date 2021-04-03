@@ -41,6 +41,7 @@ class Snake:
         self.len = 1
         self.score = 0
         self.step = 0
+        self.max_steps = self._board.shape[0] * self._board.shape[1] * max(self._board.shape)
 
         # update board label
         self._board.set_label(body_x, body_y, l_snake)
@@ -69,19 +70,27 @@ class Snake:
         self._init()
 
     def _forward(self, new_head):
+        if self.step > self.max_steps:
+            if self._verbose > 0:
+                print(f"Snake died: exceed step limits")
+            return False
+
         # check if it is okay to move one step forward.
         x, y = new_head
         bd_x, bd_y = self._board.shape
         # check boundary of the game board
         if x < 0 or x >= bd_x:
-            print(f"Snake died: X-axis out-of-boundary: x={x}, bd_x={bd_x}")
+            if self._verbose > 0:
+                print(f"Snake died: X-axis out-of-boundary: x={x}, bd_x={bd_x}")
             return False
         elif y < 0 or y >= bd_y:
-            print(f"Snake died: Y-axis out-of-boundary: Y={y}, bd_y={bd_y}")
+            if self._verbose > 0:
+                print(f"Snake died: Y-axis out-of-boundary: Y={y}, bd_y={bd_y}")
             return False
         # check if the snake bites itself.
         elif self._board.get_label(x, y) == l_snake:
-            print("Snake died: bite itself!")
+            if self._verbose > 0:
+                print("Snake died: bite itself!")
             return False
 
         # Now it is okay to move one step forward.
@@ -144,6 +153,9 @@ class Snake:
         self._board.set_label(x, y, l_food)
         self._board.food_xy = (x, y)
         return x, y
+
+    def draw(self, screen):
+        self._board.draw(screen)
 
 
 class SnakeKeyboard(Snake):

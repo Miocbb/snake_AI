@@ -1,4 +1,7 @@
 import numpy as np
+import os
+os.environ['PYGAME_HIDE_SUPPORT_PROMPT'] = "hide"
+import pygame
 
 l_empty = 0
 l_snake = 1
@@ -47,3 +50,33 @@ class Board(object):
         t = Board(self.shape)
         t._data = self._data.copy()
         return t
+
+    def draw(self, screen):
+        """
+        Draw the game board in the screen.
+
+        Parameters
+        ----------
+        screen : pygame.Surface
+            The main screen of the game.
+        board: snake.Board
+            The game board.
+        """
+        # some constant values
+        white = 255,255,255
+        red = (255,0, 0)
+        color_snake = white
+        color_food = red
+
+        screen_w, screen_h = screen.get_size()
+        board_w, board_h = self.shape
+        unit_w, unit_h = screen_w // board_w, screen_h // board_h
+        for i in range(board_w):
+            for j in range(board_h):
+                if self.get_label(i, j) == l_snake:
+                    rect = [j * unit_h, i * unit_w, unit_w, unit_h]
+                    pygame.draw.rect(screen, color_snake, rect, 1)
+                elif self.get_label(i, j) == l_food:
+                    rect = [j * unit_h, i * unit_w, unit_w, unit_h]
+                    pygame.draw.rect(screen, color_food, rect)
+        pygame.display.flip()
