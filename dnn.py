@@ -1,25 +1,31 @@
 import numpy as np
-from numpy import random
+
 
 class NN:
     def __init__(self, dims):
         if len(dims) < 2:
-            raise Exception('Wrong dimension: at 2 layers (input and output layers)!')
+            raise Exception(
+                'Wrong dimension: at 2 layers (input and output layers)!')
 
         self.W = []
         self.b = []
         self._dims = dims
 
-        def random_matrix(row, col):
-            w = np.random.randn(row, col)
-            w = w / np.linalg.norm(w)
+        def random_w(row, col):
+            w = np.random.uniform(low=-0.5, high=0.5, size=(row, col))
+            #w = np.random.randn(row, col)
+            #w = w * 0.1
             return w
+
+        def random_b(row, col):
+            b = np.random.uniform(low=-0.1, high=0.1, size=(row, col))
+            return b
 
         for i in range(1, len(dims)):
             lin = dims[i-1]
             lout = dims[i]
-            w = random_matrix(lout, lin)
-            b = random_matrix(lout, 1)
+            w = random_w(lout, lin)
+            b = random_b(lout, 1)
             self.W.append(w)
             self.b.append(b)
 
@@ -59,3 +65,9 @@ class NN:
 
     def num_output_nodes(self):
         return self._dims[-1]
+
+    def save(self, path):
+        raise Exception('Not implement model save.')
+
+    def load(self, path):
+        raise Exception('Not implement model load.')

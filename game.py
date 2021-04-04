@@ -4,7 +4,6 @@ import pygame
 import sys
 import time
 import snake
-import board
 
 # some constant values
 black = 0, 0, 0
@@ -32,10 +31,10 @@ def draw_board(screen, board):
     unit_w, unit_h = screen_w // board_w, screen_h // board_h
     for i in range(board_w):
         for j in range(board_h):
-            if board.get_label(i, j) == snake.l_snake:
+            if board[i, j] == snake.l_snake:
                 rect = [j * unit_h, i * unit_w, unit_w, unit_h]
                 pygame.draw.rect(screen, color_snake, rect, 1)
-            elif board.get_label(i, j) == snake.l_food:
+            elif board[i, j] == snake.l_food:
                 rect = [j * unit_h, i * unit_w, unit_w, unit_h]
                 pygame.draw.rect(screen, color_food, rect)
     pygame.display.flip()
@@ -89,32 +88,31 @@ def read_key_restart_game():
                     break
     return restart
 
-def replay_game(snake, repeat=True):
+def replay_game(snake, repeat=True, title_addition=None):
     """
-    Replay the game.
+    Replay the game based on the memory of the snake.
 
     Parameters
     ----------
     snake : snake.Snake
     """
     if not snake.memory:
-        raise Exception('Fail to replay the game of snake. Input snake has not memory.')
+        raise Exception('Fail to replay the game of snake. Input snake has no memory.')
 
     original_board = snake.memory['init_board']
     steps = snake.memory['steps']
 
     pygame.init()
-    # create a pygame window
     screen = pygame.display.set_mode(gui_param['screen_size'])
-    # set the pygame window name
-    pygame.display.set_caption('Snake AI Replay')
-
+    pygame.display.set_caption('Snake AI Replay' + f' {title_addition}')
     running = True
     while running:
         # initialize and draw board
         board = original_board.copy()
         screen.fill(color_bg)
         draw_board(screen, board)
+        # add time lag between each step.
+        time.sleep(gui_param['time_lag'])
 
         # replay the game step by step
         for record in steps:
@@ -127,7 +125,7 @@ def replay_game(snake, repeat=True):
 
             # update board
             for (x, y), v in record:
-                board.set_label(x, y, v)
+                board[x, y] = v
 
             # draw the screen
             screen.fill(color_bg)
@@ -142,7 +140,7 @@ def replay_game(snake, repeat=True):
 
         # repeat the replay?
         if not repeat:
-            running = False
+            break
 
 gui_param = {
     # The dimension in pixel (weight, height) of the game display window.
@@ -150,13 +148,13 @@ gui_param = {
     'time_lag': 0.1
 }
 
-def run_game(snake, plot=True, enable_restart=False):
+def run_game(game_snake, plot=True, enable_restart=False, title_addition=None):
     """
     Run the snake game.
 
     Parameters
     ----------
-    snake : snake.Snake
+    game_snake : snake.Snake
         A snake in the game.
     plot : bool, default=True
         Display the game window or not.
@@ -170,14 +168,16 @@ def run_game(snake, plot=True, enable_restart=False):
     snake.Snake
         A snake that reaches to the end of the game.
     """
+    def make_title():
+        return f'Snake AI    Score: {game_snake.score} Steps: {game_snake.total_step} {title_addition}'
     if plot:
         pygame.init()
         # create a pygame window
         screen = pygame.display.set_mode(gui_param['screen_size'])
         # set the pygame window name
-        pygame.display.set_caption('Snake AI')
+        pygame.display.set_caption(make_title())
         # draw the screen
-        snake.draw(screen)
+        game_snake.draw(screen)
 
     running = True
     while running:
@@ -186,8 +186,10 @@ def run_game(snake, plot=True, enable_restart=False):
             time.sleep(abs(gui_param['time_lag']))
         if plot:
             screen.fill(color_bg)
-            snake.draw(screen)
-        status = snake.move()
+            game_snake.draw(screen)
+        status = game_snake.move()
+        if plot:
+            pygame.display.set_caption(make_title())
 
         # the snake is dead. enable restart or not?
         if not status:
@@ -199,37 +201,41 @@ def run_game(snake, plot=True, enable_restart=False):
                 draw_game_over(screen, msg)
                 if enable_restart:
                     if read_key_restart_game():
-                        snake.reset()
+                        if isinstance(game_snake, snake.SnakeDNN):
+                            print('DEBUG')
+                            game_snake.reset_original_board()
+                            game_snake.reset_brain_random()
+                        else:
+                            game_snake.reset_board()
                     else:
                         running = False
                 else:
                     running = False;
             else:
                 running = False;
-    return snake
+    return game_snake
 
 
-def create_game(mode='key', game_size=(10, 10), verbose=1):
-    game_board = board.Board(game_size)
+def create_snake(mode='key', game_size=(10, 10), verbose=1):
     if mode == 'key':
-        game_snake = snake.SnakeKeyboard(game_board, verbose=verbose)
+        game_snake = snake.SnakeKeyboard(game_size, verbose=verbose)
     elif mode == 'dnn':
-        game_snake = snake.SnakeDNN(game_board, verbose=verbose)
+        game_snake = snake.SnakeDNN(game_size, verbose=verbose, how='center')
     elif mode == 'random':
-        game_snake = snake.SnakeRandom(game_board, verbose=verbose)
+        game_snake = snake.SnakeRandom(game_size, verbose=verbose)
 
-    return game_board, game_snake
+    return game_snake
 
 
 if __name__ == '__main__':
-    game_board, game_snake = create_game(mode='random')
-    rst_snake = run_game(game_snake, enable_restart=True, plot=True)
-
-    gui_param['time_lag'] = 0.5
-    replay_game(rst_snake)
-    #print(f'Snake score: {rst_snake.score}')
-    #print(f'Snake length: {rst_snake.len}')
-    #print(f'Snake moveing steps: {rst_snake.step}')
-    #print(f'Snake init board:\n{rst_snake.memory["init_board"]}')
-    #print(f'Snake final board:\n{rst_snake._board._data}')
-    #print(f'Snake steps memory: {rst_snake.memory["steps"]}')
+    game_snake = create_snake(mode='dnn')
+    gui_param['time_lag'] = 0.3
+    n = 30
+    for i in range(n):
+        print('round:', i)
+        title = f'round: {i}'
+        game_snake.reset_original_board()
+        game_snake.reset_brain_random()
+        run_game(game_snake, enable_restart=False, plot=True, title_addition=title)
+        time.sleep(0.5)
+    replay_game(game_snake)
