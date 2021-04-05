@@ -3,15 +3,26 @@ import game
 import numpy as np
 import pickle
 import copy
+import argparse
+
+# ==> Game settings <==
+
+# size of the game.
+game_size = (10, 10)
+
+# ==> Population settings <==
 
 # number of generations.
 generation = 100
+generation = 1
 # number of generations.
 # For each generation, train it on the same environment for multiple times to
 # give them time to evolve.
 num_training_per_generation = 40
 # population of each generation.
 population = 200
+
+# ==> Evolution settings <==
 
 # percentage of top ranked parents to the population.
 top_parent_percentage = 0.20
@@ -24,11 +35,10 @@ mutation_rate = 0.2
 # percentage of paramters (weights and bias matrix elements).
 mutation_percentage = 0.08
 
+# ==> Neural Network settings <==
+
 # number of nodes in the DNN hidden layers.
 snake_DNN_layers = [8]
-
-# size of the game.
-game_size = (10, 10)
 
 total_parent_percentage = top_parent_percentage + bottom_parent_percentage
 if total_parent_percentage > 1:
@@ -49,10 +59,14 @@ def create_population():
 
 
 def rank_snakes(snakes, reverse=True):
-    #snakes.sort(key=lambda s: (s.len, -s._current_step - s._num_turns), reverse=reverse)
-    #snakes.sort(key=lambda s: (s.len, -s._num_turns), reverse=reverse)
-    #snakes.sort(key=lambda s: (s.len, -s._current_step), reverse=reverse)
-    snakes.sort(key=lambda s: (s.len, -s._num_turns, s._current_step, -s.total_step/s.len), reverse=reverse)
+    """
+    The snake with longer length, less number of turns in the last round,
+    more number of steps in the last round, less averaged steps and
+    less averaged turns will have a higher rank.
+    """
+    rank_func = lambda s: (s.len(), -s.last_num_turns(), s.last_num_steps(),
+                           -s.avg_num_steps(), -s.avg_num_turns())
+    snakes.sort(key=rank_func, reverse=reverse)
     return snakes
 
 def select_parents(snakes):
@@ -169,7 +183,10 @@ def print_generation(generation, sub_gen, snakes):
     print('-' * 10)
     print(f'Generation: {generation} Sub-gen: {sub_gen}')
     for i, s in enumerate(snakes[:5]):
-        print(f'    Rank: {i}  Len: {s.len:<4} LastSteps: {s._current_step:<4} LastTurns: {s._num_turns:<10}')
+        print(f'    Rank: {i}  Len: {s.len():<4} LastTurns: {s.last_num_turns():<4}',
+              f' LastSteps: {s.last_num_steps():<4}',
+              f' TotalSteps: {s.total_num_steps():<6} TotalTurns: {s.total_num_turns():<6}',
+              f' AvgSteps: {s.avg_num_steps():<6.2f} AvgTurns: {s.avg_num_turns():<6.2f}')
     print('')
 
 
@@ -180,6 +197,7 @@ def genetic_algo():
     run_snakes(current_snakes, env_seed=env_seed)
 
     top_5_snakes = []
+    best_snake = current_snakes[0]
 
     for gen in range(generation):
         env_seed = np.random.randint(10000)
@@ -193,18 +211,29 @@ def genetic_algo():
             print_generation(gen, sub_gen, current_snakes)
             #game.replay_game(
             #    current_snakes[0], repeat=False, title_addition=f'Generation {i}')
+
+            if current_snakes[0].len() > best_snake.len():
+                best_snake = copy.deepcopy(current_snakes[0])
         top_5_snakes.append([copy.deepcopy(s) for s in current_snakes[:5]])
 
-    return current_snakes, top_5_snakes
+    return current_snakes, top_5_snakes, best_snake
 
 
-def save_snakes(top_5_snakes, filename):
+def save_snakes(snakes, filename):
     f = open(filename, 'wb')
-    pickle.dump(top_5_snakes, f)
+    pickle.dump(snakes, f)
     f.close()
 
-s, top_snakes = genetic_algo()
-save_snakes(top_snakes, 'save/test_5.pickle')
-print(f'best_score: {s[0].len} steps: {s[0]._current_step}')
-game.gui_param['time_lag'] = 0.1
-game.replay_game(s[0])
+
+if __name__ == '__main__':
+    ap = argparse.ArgumentParser()
+    ap.add_argument('-o', '--output', help='relative path to save the snakes')
+    args = ap.parse_args()
+
+    last_snakes, top_5_snakes, best_snake = genetic_algo()
+    if args.output:
+        save_snakes(top_5_snakes, args.output)
+
+    print(f'BestSnake: Len: {best_snake.len()} TotalSteps: {best_snake.total_num_steps()}')
+    game.gui_param['time_lag'] = 0.1
+    game.replay_game(best_snake)

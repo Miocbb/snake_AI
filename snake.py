@@ -3,6 +3,7 @@ import sys
 import pygame
 import numpy as np
 import dnn
+import pickle
 
 l_empty = 0
 l_snake = 1
@@ -50,7 +51,6 @@ class Snake:
         # ==> Part 1 <==
         # States related to the snake's body, the position of food and
         # game board.
-        self.status = 'live'
         self._board = np.zeros(self._game_size)
         if how == 'random':
             body_x, body_y = self._next_random_avail_position()
@@ -76,33 +76,59 @@ class Snake:
         self._board[fx, fy] = l_food
 
         # ==> Part 2 <==
-        # States related to monitoring the moving of the snake.
+        # States related to monitoring and measuring the moving of the snake.
 
         # The record for all positions of the snake's body during the
         # exploration for one food.
         self._body_record = set()
         self._add_body_record()
-        # number of circling during the exploration to eat the current food.
-        self._num_circling = 0
-        self._max_num_circling = 10
-        self._directoin_to_food_count = 0
-        self._dist_record = []
+
+        # number of turnings that the snakes made during the exploration to
+        # eat current food.
         self._num_turns = 0
+        self._total_num_turns = 0
+
+        # number of moving steps during the exploration to find the current
+        # food.
+        self._num_steps = 0
+        self._total_num_steps = 0
+
+        # The status of the snakes. Is it dead or live? How does it die?
+        self._status = 'live'
+
+        # The length of the snake
+        self._len = 1
 
         # ==> Part 3 <==
-        # States related to the score and others.
-
-        self.len = 1
-        self.score = 0
-        # number of steps during the exploration to find the current food.
-        self._current_step = 0
-        # total number of steps till now.
-        self.total_step = 0
-        self.max_steps = self._board.size
+        # Other states
         self.memory = {}
         if self._save_memory:
             self.memory['init_board'] = self._board.copy()
             self.memory['steps'] = []
+
+    def len(self):
+        return self._len
+
+    def status(self):
+        return self._status
+
+    def last_num_steps(self):
+        return self._num_steps
+
+    def total_num_steps(self):
+        return self._total_num_steps
+
+    def avg_num_steps(self):
+        return self.total_num_steps() / self.len()
+
+    def last_num_turns(self):
+        return self._num_turns
+
+    def total_num_turns(self):
+        return self._total_num_turns
+
+    def avg_num_turns(self):
+        return self.total_num_turns() / self.len()
 
     def _body_to_tuple(self):
         return tuple(i for x in self._body for i in x)
@@ -145,7 +171,8 @@ class Snake:
             y = np.random.randint(by)
         return x, y
 
-    def _update_board(self):
+    def _overwrite_board(self):
+        "Overwrite the board based on current snake and food information."
         self._board = np.zeros_like(self._board)
         x, y = self._food_xy
         self._board[x, y] = l_food
@@ -173,7 +200,7 @@ class Snake:
         self._body.append(self._original_head_xy)
         self._body_in_tuple = self._body_to_tuple()
         self._food_xy = self._original_food_xy
-        self._update_board()
+        self._overwrite_board()
 
     def draw(self, screen):
         """
@@ -205,44 +232,26 @@ class Snake:
                     pygame.draw.rect(screen, color_food, rect)
         pygame.display.flip()
 
-    def _get_food_dist(self):
-        x, y = self._body[0]
-        fx, fy = self._food_xy
-        return np.linalg.norm([fx -x, fy-y])
-
-    def _get_score(self):
-        return 0
-
     def _move_one_step(self, new_head):
-        if self._current_step > self.max_steps:
-            self.status = 'killed'
-            self.score = self._get_score()
-            if self._verbose > 0:
-                print(f"Snake died: exceed step limits")
-            return False
-
         # check if it is okay to move one step forward.
         x, y = new_head
         bd_x, bd_y = self._board.shape
         # check boundary of the game board
         if x < 0 or x >= bd_x:
-            self.status = 'crush_on_wall'
-            self.score = self._get_score()
+            self._status = 'crush_on_wall'
             if self._verbose > 0:
                 print(
                     f"Snake died: X-axis out-of-boundary: x={x}, bd_x={bd_x}")
             return False
         elif y < 0 or y >= bd_y:
-            self.status = 'crush_on_wall'
-            self.score = self._get_score()
+            self._status = 'crush_on_wall'
             if self._verbose > 0:
                 print(
                     f"Snake died: Y-axis out-of-boundary: Y={y}, bd_y={bd_y}")
             return False
         # check if the snake bites itself.
         elif self._board[x, y] == l_snake:
-            self.status = 'bite_itself'
-            self.score = self._get_score()
+            self._status = 'bite_itself'
             if self._verbose > 0:
                 print("Snake died: bite itself!")
             return False
@@ -258,17 +267,14 @@ class Snake:
             # update body in tuple representation.
             self._body_in_tuple = self._body_to_tuple()
             # increase states accordingly
-            self.len += 1
+            self._len += 1
             # generate new food and record the modification
             food_x, food_y = self._new_food()
             board_modification_record.append(((food_x, food_y), l_food))
             # reset states for the exploration of the eaten food.
-            self._current_step = 0
-            self._num_circling = 0
+            self._num_steps = 0
             self._num_turns = 0
             self._reset_body_record()
-
-            self._dist_record = [self._get_food_dist()]
         else:
             # move one step.
             tail_x, tail_y = self._body.pop()
@@ -279,32 +285,21 @@ class Snake:
             # check if the snake is in a visited position.
             # If so, it may circle.
             if self._is_body_in_record():
-                #print(f'body: {self._body_in_tuple}')
-                #print(f'body record: {self._body_record}')
-                if self._num_circling >= self._max_num_circling * self.len:
-                    self.status = 'killed_by_circling'
-                    self.score = self._get_score()
-                    return False
-                else:
-                    return False
-                # update circling record.
-                self._num_circling += 1
-                #return False
+                self._status = 'killed_by_circling'
+                return False
             # update the states for the exploration of the current food.
-            self._current_step += 1
+            self._num_steps += 1
             self._add_body_record()
 
-            self._dist_record.append(self._get_food_dist())
-
         # update total moving steps
-        self.total_step += 1
+        self._total_num_steps  += 1
 
         # update memory with all the operations to board in current step.
         if self._save_memory:
             self.memory['steps'].append(board_modification_record)
 
         if self._verbose > 0:
-            print(f'step: {self.total_step}\n{self._board}')
+            print(f'step: {self._total_num_steps}\n{self._board}')
 
         return True
 
@@ -530,35 +525,7 @@ class SnakeDNN(Snake):
         return a
 
     def _make_nn_input(self):
-        # vision data
         x = self._vision()
-        ## dist to wall
-        #xt = x[:, 0]
-        #xt[xt >= 0] = 1 / (xt[xt >= 0])
-        ## dist to body
-        #xt = x[:, 1]
-        #xt[xt >= 0] = 1 / (xt[xt >= 0])
-        ## dist to food
-        #xt = x[:, 2]
-        #xt[xt >= 0] = 1
-        #x[x < 0] = 0
-        ##print(f'step: {self.step} vision matrix:\n{x}')
-        ##norm_x = np.sum(x, axis=0)
-        ##norm_x[norm_x == 0] = 1
-        ##x = x / norm_x
-        ##print(f'step: {self.total_step} vision matrix normalized:\n{x}')
-        #x = x.reshape(-1, 1)
-        #x = list(x)
-
-        ## food direction data
-        #food_direction = self._measure_wrt_food()
-        #x += food_direction
-
-        ## head position data
-        #x += [self._body[0][0] / self._width, self._body[0][1] / self._height]
-
-        #x += [self._num_circling]
-
         x = np.array(x).reshape(-1, 1)
         return x
 
@@ -580,22 +547,32 @@ class SnakeDNN(Snake):
         choice = np.argmax(prediction)
         if self._verbose > 0:
             print(
-                f'step: {self.total_step} dnn prediction: {prediction.flatten()} choice: {choice}')
+                f'step: {self._total_num_steps} dnn prediction: {prediction.flatten()} choice: {choice}')
         return self._move_ops[choice]()
 
     def save(self, path):
-        raise Exception('Not implement save')
+        f = open(path, 'wb')
+        pickle.dump(self, f)
+        f.close()
 
     def load(self, path):
         raise Exception('Not implement load')
 
 
 class SnakeDNN_v2(SnakeDNN):
+    """
+    Snake with deep neural network version 2.
+
+    Compare to SnakeDNN (version 1), the version 2 of snake only has three
+    choices to descide when it wants to move. It never goes back!
+    """
     def __init__(self, *args, **kargs):
         super(SnakeDNN_v2, self).__init__(*args, **kargs)
         self._dnn_full_layers[-1] = 3
         self.brain = dnn.NN(self._dnn_full_layers)
 
+        # ==> states of the snake <==
+        # The direction to which the snake is facing.
         self._face_direction = (0, 1)
 
     def _vision_in_one_direction(self, direction):
@@ -629,13 +606,14 @@ class SnakeDNN_v2(SnakeDNN):
         choice = np.argmax(prediction)
         if choice != 0:
             self._num_turns += 1
+            self._total_num_turns += 1
         if self._verbose > 0:
             print(
-                f'step: {self.total_step} input x: {x.reshape(8, -1)}')
+                f'step: {self._total_num_steps} input x: {x.reshape(8, -1)}')
             print(
-                f'step: {self.total_step} dnn prediction: {prediction.flatten()} choice: {choice}')
+                f'step: {self._total_num_steps} dnn prediction: {prediction.flatten()} choice: {choice}')
 
-        # choice:
+        # interpretation of the choice.
         # 0: keep straight
         # 1: go left
         # 2: go right
@@ -676,5 +654,6 @@ class SnakeDNN_v2(SnakeDNN):
             self.move_down: (1, 0),
         }
         status = func_move()
+        # update face direction
         self._face_direction = t[func_move]
         return status

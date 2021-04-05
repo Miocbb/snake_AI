@@ -169,7 +169,7 @@ def run_game(game_snake, plot=True, enable_restart=False, title_addition=None):
         A snake that reaches to the end of the game.
     """
     def make_title():
-        return f'Snake AI    Score: {game_snake.score} Steps: {game_snake.total_step} {title_addition}'
+        return f'Snake AI    Length: {game_snake.len()} Steps: {game_snake.total_num_steps()} {title_addition}'
     if plot:
         pygame.init()
         # create a pygame window
@@ -245,6 +245,6 @@ if __name__ == '__main__':
             game_snake.reset_brain_random()
         run_game(game_snake, enable_restart=True, plot=True, title_addition=title)
         s = game_snake
-        print(f'Len: {s.len:<4} Steps: {s.total_step:<4} Status: {s.status:<10} Score: {s.score:>.2f} Circle: {s._num_circling}')
+        print(f'Len: {s.len():<4} Steps: {s.total_num_steps():<4} Status: {s.status():<10}')
         time.sleep(0.5)
     replay_game(game_snake)
