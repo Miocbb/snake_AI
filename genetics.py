@@ -4,6 +4,7 @@ import numpy as np
 import pickle
 import copy
 import argparse
+import random
 
 # ==> Game settings <==
 
@@ -12,13 +13,13 @@ game_size = (10, 10)
 
 # ==> Population settings <==
 
-# number of generations.
-generation = 100
-generation = 1
-# number of generations.
-# For each generation, train it on the same environment for multiple times to
-# give them time to evolve.
-num_training_per_generation = 40
+# Number of environments. The environment means the sequence of positions of
+# foods on the game board.
+num_environment = 100
+# number of generations per environment.
+# For each environment , train a group of snakes generation by generation
+# to make them evolve to learn the current environment.
+num_generation_per_environ = 40
 # population of each generation.
 population = 200
 
@@ -46,9 +47,10 @@ if total_parent_percentage > 1:
 
 
 def create_snake():
-    return snake.SnakeDNN_v2(game_size, dnn_hidden_layers=snake_DNN_layers,
+    s = snake.SnakeDNN_v2(game_size, dnn_hidden_layers=snake_DNN_layers,
                           verbose=0, save_memory=True, how='center')
-
+    s.is_run = False
+    return s
 
 def create_population():
     snakes = []
@@ -162,9 +164,8 @@ def mutate_children(child_snakes):
         mutate_child(s)
 
 
-def update_population(old_snakes, child_snakes, env_seed=None):
+def update_population(old_snakes, child_snakes):
     all_snakes = old_snakes + child_snakes
-    run_snakes(all_snakes, env_seed=env_seed)
     new_snakes = rank_snakes(all_snakes)[:population]
     return new_snakes
 
@@ -173,15 +174,18 @@ def run_snakes(snakes, env_seed=None):
     if not env_seed:
         env_seed = np.random.randint(100000)
     for s in snakes:
-        np.random.seed(env_seed)
+        if s.is_run:
+            continue
+        random.seed(env_seed)
         s.reset_original_board()
         game.run_game(s, enable_restart=False, plot=False)
-    np.random.seed()
+        s.is_run = True
+    random.seed()
 
 
-def print_generation(generation, sub_gen, snakes):
+def print_generation(n_env, n_gen, snakes):
     print('-' * 10)
-    print(f'Generation: {generation} Sub-gen: {sub_gen}')
+    print(f'Environ: {n_env} Generation: {n_gen}')
     for i, s in enumerate(snakes[:5]):
         print(f'    Rank: {i}  Len: {s.len():<4} LastTurns: {s.last_num_turns():<4}',
               f' LastSteps: {s.last_num_steps():<4}',
@@ -191,31 +195,46 @@ def print_generation(generation, sub_gen, snakes):
 
 
 def genetic_algo():
+    top_5_snakes = []
+    best_snake = None
+
     # create population
     current_snakes = create_population()
-    env_seed = np.random.randint(10000)
-    run_snakes(current_snakes, env_seed=env_seed)
 
-    top_5_snakes = []
-    best_snake = current_snakes[0]
-
-    for gen in range(generation):
+    # evolve the group
+    for n_env in range(num_environment):
+        # The random seed complete controls how the food is generated. So
+        # it controls the change of the environment.
         env_seed = np.random.randint(10000)
-        for sub_gen in range(num_training_per_generation):
-            # mating process to give child population
-            parent_snakes = select_parents(current_snakes)
-            child_snakes = create_children(parent_snakes)
-            mutate_children(child_snakes)
-            current_snakes = update_population(parent_snakes, child_snakes, env_seed=env_seed)
+        for s in current_snakes:
+            s.is_run = False
 
-            print_generation(gen, sub_gen, current_snakes)
+        for n_gen in range(num_generation_per_environ):
+            # let snakes run for food.
+            run_snakes(current_snakes, env_seed=env_seed)
+            # select parents.
+            parent_snakes = select_parents(current_snakes)
+            # mate to generate children.
+            child_snakes = create_children(parent_snakes)
+            # mutate children to bring more diversity.
+            mutate_children(child_snakes)
+            # let children snakes run for food.
+            run_snakes(child_snakes, env_seed=env_seed)
+            # update the population to make next generation.
+            current_snakes = update_population(parent_snakes, child_snakes)
+            # print top some of snakes.
+            print_generation(n_env, n_gen, current_snakes)
             #game.replay_game(
             #    current_snakes[0], repeat=False, title_addition=f'Generation {i}')
 
-            if current_snakes[0].len() > best_snake.len():
-                best_snake = copy.deepcopy(current_snakes[0])
+            current_best = current_snakes[0]
+            if not best_snake or current_best.len() > best_snake.len():
+                best_snake = copy.deepcopy(current_best)
+
+        # save the top 5 snakes for current environment to history.
         top_5_snakes.append([copy.deepcopy(s) for s in current_snakes[:5]])
 
+    # return last group of snakes, top 5 snakes and the best snake.
     return current_snakes, top_5_snakes, best_snake
 
 
@@ -228,11 +247,15 @@ def save_snakes(snakes, filename):
 if __name__ == '__main__':
     ap = argparse.ArgumentParser()
     ap.add_argument('-o', '--output', help='relative path to save the snakes')
+    ap.add_argument('--save_top5_history', help='save all the top 5 snakes in each generation to file.')
     args = ap.parse_args()
 
     last_snakes, top_5_snakes, best_snake = genetic_algo()
+    if args.save_top5_history:
+        save_snakes(top_5_snakes, args.save_top5_history)
     if args.output:
-        save_snakes(top_5_snakes, args.output)
+        with open(args.output, 'wb') as f:
+            pickle.dump(best_snake, f)
 
     print(f'BestSnake: Len: {best_snake.len()} TotalSteps: {best_snake.total_num_steps()}')
     game.gui_param['time_lag'] = 0.1

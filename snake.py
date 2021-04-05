@@ -4,6 +4,7 @@ import pygame
 import numpy as np
 import dnn
 import pickle
+import random
 
 l_empty = 0
 l_snake = 1
@@ -164,11 +165,11 @@ class Snake:
         """Based on current game board, find the next available position
         randomly."""
         bx, by = self._board.shape
-        x = np.random.randint(bx)
-        y = np.random.randint(by)
+        x = random.randint(0, bx-1)
+        y = random.randint(0, by-1)
         while (self._is_occupied(x, y)):
-            x = np.random.randint(bx)
-            y = np.random.randint(by)
+            x = random.randint(0, bx-1)
+            y = random.randint(0, by-1)
         return x, y
 
     def _overwrite_board(self):
@@ -570,8 +571,12 @@ class SnakeDNN_v2(SnakeDNN):
         super(SnakeDNN_v2, self).__init__(*args, **kargs)
         self._dnn_full_layers[-1] = 3
         self.brain = dnn.NN(self._dnn_full_layers)
+        self._init_states(**kargs)
 
-        # ==> states of the snake <==
+    def _init_states(self, **kargs):
+        super()._init_states(how=kargs['how'])
+
+        # ==> states of the SnakeDNN_v2 <==
         # The direction to which the snake is facing.
         self._face_direction = (0, 1)
 
