@@ -226,8 +226,9 @@ class Snake:
         for i in range(board_w):
             for j in range(board_h):
                 if self._board[i, j] == l_snake:
+                    fill = 1 if (i, j) != self._body[0] else 0
                     rect = [j * unit_h, i * unit_w, unit_w, unit_h]
-                    pygame.draw.rect(screen, color_snake, rect, 1)
+                    pygame.draw.rect(screen, color_snake, rect, fill)
                 elif self._board[i, j] == l_food:
                     rect = [j * unit_h, i * unit_w, unit_w, unit_h]
                     pygame.draw.rect(screen, color_food, rect)

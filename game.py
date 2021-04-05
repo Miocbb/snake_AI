@@ -1,9 +1,12 @@
 import os
+
+from numpy.core.records import format_parser
 os.environ['PYGAME_HIDE_SUPPORT_PROMPT'] = "hide"
 import pygame
 import sys
 import time
 import snake
+import imageio
 
 # some constant values
 black = 0, 0, 0
@@ -148,7 +151,8 @@ gui_param = {
     'time_lag': 0.1
 }
 
-def run_game(game_snake, plot=True, enable_restart=False, title_addition=None):
+def run_game(game_snake, plot=True, enable_restart=False, title_addition=None,
+             gif_path=None):
     """
     Run the snake game.
 
@@ -180,6 +184,7 @@ def run_game(game_snake, plot=True, enable_restart=False, title_addition=None):
         game_snake.draw(screen)
 
     running = True
+    imgs = []
     while running:
         # control the refresh speed.
         if plot and gui_param['time_lag'] > 0:
@@ -190,6 +195,14 @@ def run_game(game_snake, plot=True, enable_restart=False, title_addition=None):
         status = game_snake.move()
         if plot:
             pygame.display.set_caption(make_title())
+            # save images.
+            if gif_path:
+                pygame.display.flip()
+                if not os.path.isdir('image'):
+                    os.mkdir('image')
+                imgs_path = f'image/img{len(imgs)}.png'
+                pygame.image.save(screen, imgs_path)
+                imgs.append(imgs_path)
 
         # the snake is dead. enable restart or not?
         if not status:
@@ -207,12 +220,27 @@ def run_game(game_snake, plot=True, enable_restart=False, title_addition=None):
                             game_snake.reset_brain_random()
                         else:
                             game_snake.reset_board()
+                        # clean all the saved images.
+                        if gif_path:
+                            for i in imgs:
+                                os.remove(i)
+                            imgs = []
                     else:
                         running = False
                 else:
                     running = False;
             else:
                 running = False;
+
+    # convert png image to gif
+    if gif_path:
+        images = []
+        for i in imgs:
+            images.append(imageio.imread(i))
+        imageio.mimsave(gif_path, images, fps=25)
+        for i in imgs:
+            os.remove(i)
+
     return game_snake
 
 
