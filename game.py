@@ -221,6 +221,8 @@ def create_snake(mode='key', game_size=(10, 10), verbose=1):
         game_snake = snake.SnakeKeyboard(game_size, verbose=verbose)
     elif mode == 'dnn':
         game_snake = snake.SnakeDNN(game_size, verbose=verbose, how='center')
+    elif mode == 'dnn_v2':
+        game_snake = snake.SnakeDNN_v2(game_size, verbose=verbose, how='center')
     elif mode == 'random':
         game_snake = snake.SnakeRandom(game_size, verbose=verbose)
 
@@ -228,14 +230,21 @@ def create_snake(mode='key', game_size=(10, 10), verbose=1):
 
 
 if __name__ == '__main__':
-    game_snake = create_snake(mode='dnn')
-    gui_param['time_lag'] = 0.3
+    mode = 'dnn_v2'
+    game_snake = create_snake(mode=mode)
     n = 30
+    if mode == 'key':
+        gui_param['time_lag'] = 0.0
+    else:
+        gui_param['time_lag'] = 0.3
     for i in range(n):
         print('round:', i)
         title = f'round: {i}'
         game_snake.reset_original_board()
-        game_snake.reset_brain_random()
-        run_game(game_snake, enable_restart=False, plot=True, title_addition=title)
+        if mode == 'dnn' or mode == 'dnn_v2':
+            game_snake.reset_brain_random()
+        run_game(game_snake, enable_restart=True, plot=True, title_addition=title)
+        s = game_snake
+        print(f'Len: {s.len:<4} Steps: {s.total_step:<4} Status: {s.status:<10} Score: {s.score:>.2f} Circle: {s._num_circling}')
         time.sleep(0.5)
     replay_game(game_snake)

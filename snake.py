@@ -50,7 +50,7 @@ class Snake:
         # ==> Part 1 <==
         # States related to the snake's body, the position of food and
         # game board.
-
+        self.status = 'live'
         self._board = np.zeros(self._game_size)
         if how == 'random':
             body_x, body_y = self._next_random_avail_position()
@@ -84,6 +84,10 @@ class Snake:
         self._add_body_record()
         # number of circling during the exploration to eat the current food.
         self._num_circling = 0
+        self._max_num_circling = 10
+        self._directoin_to_food_count = 0
+        self._dist_record = []
+        self._num_turns = 0
 
         # ==> Part 3 <==
         # States related to the score and others.
@@ -201,8 +205,18 @@ class Snake:
                     pygame.draw.rect(screen, color_food, rect)
         pygame.display.flip()
 
+    def _get_food_dist(self):
+        x, y = self._body[0]
+        fx, fy = self._food_xy
+        return np.linalg.norm([fx -x, fy-y])
+
+    def _get_score(self):
+        return 0
+
     def _move_one_step(self, new_head):
         if self._current_step > self.max_steps:
+            self.status = 'killed'
+            self.score = self._get_score()
             if self._verbose > 0:
                 print(f"Snake died: exceed step limits")
             return False
@@ -212,17 +226,23 @@ class Snake:
         bd_x, bd_y = self._board.shape
         # check boundary of the game board
         if x < 0 or x >= bd_x:
+            self.status = 'crush_on_wall'
+            self.score = self._get_score()
             if self._verbose > 0:
                 print(
                     f"Snake died: X-axis out-of-boundary: x={x}, bd_x={bd_x}")
             return False
         elif y < 0 or y >= bd_y:
+            self.status = 'crush_on_wall'
+            self.score = self._get_score()
             if self._verbose > 0:
                 print(
                     f"Snake died: Y-axis out-of-boundary: Y={y}, bd_y={bd_y}")
             return False
         # check if the snake bites itself.
         elif self._board[x, y] == l_snake:
+            self.status = 'bite_itself'
+            self.score = self._get_score()
             if self._verbose > 0:
                 print("Snake died: bite itself!")
             return False
@@ -239,14 +259,16 @@ class Snake:
             self._body_in_tuple = self._body_to_tuple()
             # increase states accordingly
             self.len += 1
-            self.score += 1
             # generate new food and record the modification
             food_x, food_y = self._new_food()
             board_modification_record.append(((food_x, food_y), l_food))
             # reset states for the exploration of the eaten food.
             self._current_step = 0
             self._num_circling = 0
+            self._num_turns = 0
             self._reset_body_record()
+
+            self._dist_record = [self._get_food_dist()]
         else:
             # move one step.
             tail_x, tail_y = self._body.pop()
@@ -259,11 +281,21 @@ class Snake:
             if self._is_body_in_record():
                 #print(f'body: {self._body_in_tuple}')
                 #print(f'body record: {self._body_record}')
-                return False
+                if self._num_circling >= self._max_num_circling * self.len:
+                    self.status = 'killed_by_circling'
+                    self.score = self._get_score()
+                    return False
+                else:
+                    return False
+                # update circling record.
+                self._num_circling += 1
+                #return False
             # update the states for the exploration of the current food.
             self._current_step += 1
-            self._num_circling += 1
             self._add_body_record()
+
+            self._dist_record.append(self._get_food_dist())
+
         # update total moving steps
         self.total_step += 1
 
@@ -500,30 +532,30 @@ class SnakeDNN(Snake):
     def _make_nn_input(self):
         # vision data
         x = self._vision()
-        # dist to wall
-        xt = x[:, 0]
-        xt[xt >= 0] = 1 / (xt[xt >= 0])
-        # dist to body
-        xt = x[:, 1]
-        xt[xt >= 0] = 1 / (xt[xt >= 0])
-        # dist to food
-        xt = x[:, 2]
-        xt[xt >= 0] = 1
-        x[x < 0] = 0
-        #print(f'step: {self.step} vision matrix:\n{x}')
-        #norm_x = np.sum(x, axis=0)
-        #norm_x[norm_x == 0] = 1
-        #x = x / norm_x
-        #print(f'step: {self.total_step} vision matrix normalized:\n{x}')
-        x = x.reshape(-1, 1)
-        x = list(x)
+        ## dist to wall
+        #xt = x[:, 0]
+        #xt[xt >= 0] = 1 / (xt[xt >= 0])
+        ## dist to body
+        #xt = x[:, 1]
+        #xt[xt >= 0] = 1 / (xt[xt >= 0])
+        ## dist to food
+        #xt = x[:, 2]
+        #xt[xt >= 0] = 1
+        #x[x < 0] = 0
+        ##print(f'step: {self.step} vision matrix:\n{x}')
+        ##norm_x = np.sum(x, axis=0)
+        ##norm_x[norm_x == 0] = 1
+        ##x = x / norm_x
+        ##print(f'step: {self.total_step} vision matrix normalized:\n{x}')
+        #x = x.reshape(-1, 1)
+        #x = list(x)
 
-        # food direction data
-        food_direction = self._measure_wrt_food()
-        x += food_direction
+        ## food direction data
+        #food_direction = self._measure_wrt_food()
+        #x += food_direction
 
-        # head position data
-        x += [self._body[0][0] / self._width, self._body[0][1] / self._height]
+        ## head position data
+        #x += [self._body[0][0] / self._width, self._body[0][1] / self._height]
 
         #x += [self._num_circling]
 
@@ -556,3 +588,93 @@ class SnakeDNN(Snake):
 
     def load(self, path):
         raise Exception('Not implement load')
+
+
+class SnakeDNN_v2(SnakeDNN):
+    def __init__(self, *args, **kargs):
+        super(SnakeDNN_v2, self).__init__(*args, **kargs)
+        self._dnn_full_layers[-1] = 3
+        self.brain = dnn.NN(self._dnn_full_layers)
+
+        self._face_direction = (0, 1)
+
+    def _vision_in_one_direction(self, direction):
+        dirx, diry = direction
+        x, y = self._body[0]
+        fx, fy = self._food_xy
+        distance = 1
+        input = [0, 0, 0]
+        food_found = False
+        body_found = False
+        while((x != 0) and (x != self._width-1) and (y != 0) and (y != self._height-1)):
+            x, y = x + dirx, y + diry
+            distance += 1
+            if(not food_found and fx == x and fy == y):
+                input[0] = 1
+                food_found = True
+            if(not body_found and self._board[x,y] == l_snake):
+                input[1] = 1 / distance
+                body_found = True
+        input[2] = 1 / distance
+
+        if self._verbose > 0:
+            desc = self._vision_direction[direction]
+            print(
+                f'{desc : <12} food: {input[0]} body: {input[1]} wall: {input[2]}')
+        return input
+
+    def _nn_prediction(self):
+        x = self._make_nn_input()
+        prediction = self.brain.evaluate(x)
+        choice = np.argmax(prediction)
+        if choice != 0:
+            self._num_turns += 1
+        if self._verbose > 0:
+            print(
+                f'step: {self.total_step} input x: {x.reshape(8, -1)}')
+            print(
+                f'step: {self.total_step} dnn prediction: {prediction.flatten()} choice: {choice}')
+
+        # choice:
+        # 0: keep straight
+        # 1: go left
+        # 2: go right
+        decision = {}
+        if self._face_direction == (-1, 0): # face up
+            decision = {
+                0: self.move_up,
+                1: self.move_left,
+                2: self.move_right,
+            }
+        elif self._face_direction == (1, 0): # face down
+            decision = {
+                0: self.move_down,
+                1: self.move_right,
+                2: self.move_left,
+            }
+        elif self._face_direction == (0, -1): # face left
+            decision = {
+                0: self.move_left,
+                1: self.move_down,
+                2: self.move_up,
+            }
+        elif self._face_direction == (0, 1): # face right
+            decision = {
+                0: self.move_right,
+                1: self.move_up,
+                2: self.move_down,
+            }
+
+        return decision[choice]
+
+    def move(self):
+        func_move = self._nn_prediction()
+        t = {
+            self.move_right: (0, 1),
+            self.move_left: (0, -1),
+            self.move_up: (-1, 0),
+            self.move_down: (1, 0),
+        }
+        status = func_move()
+        self._face_direction = t[func_move]
+        return status
